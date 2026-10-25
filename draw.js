@@ -288,7 +288,7 @@ function drawShop() {
     ctx.textAlign = 'center';
     ctx.font = `13px ${MONO}`;
     ctx.fillStyle = COLOR.primary;
-    ctx.fillText('UP/DOWN choose   ENTER buy or fly   ESC back', W / 2, H - 20);
+    ctx.fillText('UP/DOWN choose   ENTER buy or fly   Z back', W / 2, H - 20);
 }
 
 function drawUpgrades() {
@@ -320,7 +320,7 @@ function drawUpgrades() {
     ctx.textAlign = 'center';
     ctx.font = `13px ${MONO}`;
     ctx.fillStyle = COLOR.primary;
-    ctx.fillText('UP/DOWN choose   ENTER upgrade   ESC back', W / 2, H - 20);
+    ctx.fillText('UP/DOWN choose   ENTER upgrade   Z back', W / 2, H - 20);
 }
 
 function draw() {
@@ -364,7 +364,7 @@ function draw() {
     if (state === 'paused') {
         drawCenterPanel('PAUSED', ['P to resume']);
     } else if (state === 'over') {
-        drawCenterPanel('GAME OVER', [`Score: ${score}   Best: ${best}`, 'ENTER to play again   ESC menu']);
+        drawCenterPanel('GAME OVER', [`Score: ${score}   Best: ${best}`, 'ENTER to play again   Z menu']);
     }
 }
 

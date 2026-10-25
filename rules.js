@@ -215,7 +215,7 @@ function bossFire() {
 
 function defeatBoss() {
     explode(boss.x, boss.y);
-    addPoints(BOSS_SCORE + bossBeaten * 50);
+    addPoints(BOSS_KILL_SCORE);
     runStats.bossKills++;
     bossBeaten++;
     boss = null;

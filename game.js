@@ -20,6 +20,7 @@ const BOSS_W = 120;
 const BOSS_H = 80;
 const BOSS_SCORE = 100;
 const BOSS_SCORE_STEP = 100;
+const BOSS_KILL_SCORE = 50;
 const SPIKE_W = 32;
 const SPIKE_H = 32;
 const EXPLOSION_FRAMES = 9;

@@ -20,6 +20,21 @@ function buyOrFlyShip(index) {
     saveProgress();
 }
 
+// Cost to go from the current level to the next one: 100 at level 1, 150 at level 2.
+function cruiserUpgradeCost(index) {
+    return CRUISER_UPGRADE_BASE + CRUISER_UPGRADE_STEP * (shipLevels[index] - 1);
+}
+
+function upgradeCruiser(index) {
+    if (!ownedShips.includes(index)) return;
+    if (shipLevels[index] >= CRUISER_MAX_LEVEL) return;
+    const cost = cruiserUpgradeCost(index);
+    if (wallet < cost) return;
+    wallet -= cost;
+    shipLevels[index]++;
+    saveProgress();
+}
+
 function buyUpgrade(index) {
     const level = upgrades[index];
     if (level >= UPGRADE_MAX_LEVEL) return;
@@ -30,19 +45,41 @@ function buyUpgrade(index) {
     saveProgress();
 }
 
+function abilityLocked(index) {
+    const required = ABILITIES[index].requires;
+    return required !== null && !hasAbility(required);
+}
+
+function buyAbility(index) {
+    if (hasAbility(index)) return;
+    if (abilityLocked(index)) return;
+    if (wallet < ABILITY_PRICE) return;
+    wallet -= ABILITY_PRICE;
+    ownedAbilities.push(index);
+    saveProgress();
+}
+
 function handleMenuKey(code) {
     if (state === 'title') {
-        if (code === 'ArrowUp' || code === 'KeyW') menuIndex = (menuIndex + 2) % 3;
-        if (code === 'ArrowDown' || code === 'KeyS') menuIndex = (menuIndex + 1) % 3;
+        const count = TITLE_MENU.length;
+        if (code === 'ArrowUp' || code === 'KeyW') menuIndex = (menuIndex + count - 1) % count;
+        if (code === 'ArrowDown' || code === 'KeyS') menuIndex = (menuIndex + 1) % count;
         if (code === 'Enter' || code === 'Space') {
-            if (menuIndex === 0) resetRun();
-            if (menuIndex === 1) state = 'shop';
-            if (menuIndex === 2) state = 'upgrades';
+            if (TITLE_MENU[menuIndex] === 'PLAY') resetRun();
+            if (TITLE_MENU[menuIndex] === 'SHOP') state = 'shop';
+            if (TITLE_MENU[menuIndex] === 'UPGRADES') state = 'upgrades';
+            if (TITLE_MENU[menuIndex] === 'ABILITIES') state = 'abilities';
         }
+    } else if (state === 'abilities') {
+        if (code === 'ArrowUp' || code === 'KeyW') abilityIndex = (abilityIndex + ABILITIES.length - 1) % ABILITIES.length;
+        if (code === 'ArrowDown' || code === 'KeyS') abilityIndex = (abilityIndex + 1) % ABILITIES.length;
+        if (code === 'Enter' || code === 'Space') buyAbility(abilityIndex);
+        if (code === 'KeyZ') openTitle();
     } else if (state === 'shop') {
         if (code === 'ArrowUp' || code === 'KeyW') shopIndex = (shopIndex + SHIPS.length - 1) % SHIPS.length;
         if (code === 'ArrowDown' || code === 'KeyS') shopIndex = (shopIndex + 1) % SHIPS.length;
         if (code === 'Enter' || code === 'Space') buyOrFlyShip(shopIndex);
+        if (code === 'KeyU') upgradeCruiser(shopIndex);
         if (code === 'KeyZ') openTitle();
     } else if (state === 'upgrades') {
         if (code === 'ArrowUp' || code === 'KeyW') upgradeIndex = (upgradeIndex + POWER_UPS.length - 1) % POWER_UPS.length;

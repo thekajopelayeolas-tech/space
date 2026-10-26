@@ -5,11 +5,22 @@ function playerSpeed() {
     let speed = PLAYER_SPEED;
     if (selectedShip === SHIP_INDEX.SWIFT) speed *= 1.4;
     if (activePowerUps[2] > 0) speed *= 1.5;
+    speed *= 1 + (shipLevels[selectedShip] - 1) * CRUISER_SPEED_PER_LEVEL;
     return speed;
 }
 
+// Cooldown after a shot, with the cruiser level and abilities applied.
+function fireCooldownFrames() {
+    let base = FIRE_COOLDOWN_FRAMES;
+    if (hasAbility(ABILITY_INDEX.OVERDRIVE)) base = FIRE_COOLDOWN_OVERDRIVE;
+    else if (hasAbility(ABILITY_INDEX.RAPID)) base = FIRE_COOLDOWN_RAPID;
+    const levelCut = (shipLevels[selectedShip] - 1) * CRUISER_FIRE_FRAMES_PER_LEVEL;
+    return Math.max(CRUISER_FIRE_FLOOR, base - levelCut);
+}
+
 function rockPoints() {
-    return 1 + Math.floor(runStats.rocksDestroyed / 50);
+    const salvage = hasAbility(ABILITY_INDEX.SALVAGE) ? 1 : 0;
+    return 1 + Math.floor(runStats.rocksDestroyed / 50) + salvage;
 }
 
 function destroyRock(rock) {
@@ -32,6 +43,34 @@ function spawnPowerUp() {
         x: randomBetween(POWER_UP_SIZE, W - POWER_UP_SIZE),
         y: -POWER_UP_SIZE,
         type: Math.floor(Math.random() * POWER_UPS.length)
+    });
+}
+
+function spawnHeart() {
+    heartDrops.push({
+        x: randomBetween(HEART_SIZE, W - HEART_SIZE),
+        y: -HEART_SIZE
+    });
+}
+
+function updateHearts() {
+    if (heartFlash > 0) heartFlash--;
+    heartTimer--;
+    if (heartTimer <= 0) {
+        heartTimer = HEART_SPAWN_FRAMES;
+        spawnHeart();
+    }
+    heartDrops = heartDrops.filter(h => {
+        h.y += 1.5;
+        if (h.y > H + HEART_SIZE) return false;
+        if (respawnTimer === 0 && lives < MAX_LIVES && pointIn(h.x, h.y,
+            player.x - PLAYER_W / 2, PLAYER_Y - PLAYER_H / 2, PLAYER_W, PLAYER_H)) {
+            lives++;
+            heartFlash = 90;
+            playSound('powerUp', 0.5);
+            return false;
+        }
+        return true;
     });
 }
 
@@ -95,18 +134,20 @@ function checkMedic() {
     if (selectedShip !== SHIP_INDEX.MEDIC) return;
     while (score >= medicMark + 300) {
         medicMark += 300;
-        if (lives < 5) lives++;
+        if (lives < MAX_LIVES) lives++;
     }
 }
 
 function fireShot() {
     const y = PLAYER_Y - PLAYER_H / 2;
-    if (selectedShip === SHIP_INDEX.VANGUARD) {
+    if (hasAbility(ABILITY_INDEX.TRIPLE)) {
+        playerBullets.push({ x: player.x - 16, y }, { x: player.x, y }, { x: player.x + 16, y });
+    } else if (selectedShip === SHIP_INDEX.VANGUARD || hasAbility(ABILITY_INDEX.TWIN)) {
         playerBullets.push({ x: player.x - 12, y }, { x: player.x + 12, y });
     } else {
         playerBullets.push({ x: player.x, y });
     }
-    fireCooldown = FIRE_COOLDOWN_FRAMES;
+    fireCooldown = fireCooldownFrames();
     playSound('laser', 0.25);
 }
 
@@ -117,7 +158,7 @@ function updatePlayer() {
     if (keys.has('ArrowRight') || keys.has('KeyD')) player.x += speed;
     player.x = Math.max(PLAYER_W / 2, Math.min(W - PLAYER_W / 2, player.x));
     if (fireCooldown > 0) fireCooldown--;
-    if (keys.has('Space') && !fireLocked && fireCooldown === 0 && playerBullets.length < 4) fireShot();
+    if (keys.has('Space') && !fireLocked && fireCooldown === 0 && playerBullets.length < MAX_PLAYER_BULLETS) fireShot();
 }
 
 function updatePlayerBullets() {
@@ -262,6 +303,7 @@ function update() {
     updatePlayerBullets();
     updateRocks();
     updatePowerUps();
+    updateHearts();
     updateBoss();
     checkMedic();
     updateExplosions();

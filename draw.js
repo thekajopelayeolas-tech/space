@@ -4,10 +4,10 @@ const ctx = canvas.getContext('2d');
 const MONO = '"Courier New", monospace';
 const COLOR = {
     primary: '#7ff7ff',
-    accent: '#ff7ab6',
-    gold: '#ffd166',
+    accent: '#9db7ff',
+    gold: '#a6e4ff',
     danger: '#ff4d6d',
-    panel: 'rgba(4, 8, 24, 0.78)'
+    panel: 'rgba(10, 26, 52, 0.7)'
 };
 
 // Parallax starfield: three layers that scroll at different speeds
@@ -40,8 +40,8 @@ function drawFlipped(img, cx, cy, w, h) {
 function drawSpaceBackground() {
     // Deep space gradient
     const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0, '#02030c');
-    grad.addColorStop(1, '#0b0630');
+    grad.addColorStop(0, '#06182e');
+    grad.addColorStop(1, '#143d6b');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
@@ -50,7 +50,7 @@ function drawSpaceBackground() {
     const scale = Math.max(W / img.width, H / img.height);
     const w = img.width * scale;
     const h = img.height * scale;
-    ctx.globalAlpha = 0.35;
+    ctx.globalAlpha = 0.5;
     ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
     ctx.globalAlpha = 1;
 }
@@ -107,6 +107,28 @@ function drawPowerUpDrops() {
     }
 }
 
+function drawHeartDrops() {
+    for (const h of heartDrops) {
+        const glow = ctx.createRadialGradient(h.x, h.y, 4, h.x, h.y, HEART_SIZE);
+        glow.addColorStop(0, 'rgba(255, 77, 109, 0.45)');
+        glow.addColorStop(1, 'rgba(255, 77, 109, 0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(h.x - HEART_SIZE, h.y - HEART_SIZE, HEART_SIZE * 2, HEART_SIZE * 2);
+        drawCentered(ASSETS.images.heartPickup, h.x, h.y, HEART_SIZE, HEART_SIZE);
+    }
+}
+
+function drawHeartFlash() {
+    if (heartFlash <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, heartFlash / 30);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = COLOR.primary;
+    ctx.font = `bold 18px ${MONO}`;
+    ctx.fillText('+1 HEART', player.x, PLAYER_Y - 40 - (90 - heartFlash) * 0.3);
+    ctx.restore();
+}
+
 function drawBoss() {
     if (!boss) return;
     // Glow behind the boss
@@ -136,9 +158,9 @@ function drawEngineFlame(cx, cy) {
     const flicker = 0.7 + Math.random() * 0.5;
     const len = 14 * flicker;
     const grad = ctx.createLinearGradient(0, cy + PLAYER_H / 2, 0, cy + PLAYER_H / 2 + len);
-    grad.addColorStop(0, 'rgba(255, 220, 120, 0.95)');
-    grad.addColorStop(0.5, 'rgba(255, 122, 182, 0.7)');
-    grad.addColorStop(1, 'rgba(255, 122, 182, 0)');
+    grad.addColorStop(0, 'rgba(200, 250, 255, 0.95)');
+    grad.addColorStop(0.5, 'rgba(127, 220, 255, 0.7)');
+    grad.addColorStop(1, 'rgba(127, 220, 255, 0)');
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.moveTo(cx - 6, cy + PLAYER_H / 2 - 2);
@@ -251,7 +273,7 @@ function drawTitle() {
     ctx.font = `16px ${MONO}`;
     ctx.fillStyle = COLOR.accent;
     ctx.fillText(`Best ${best}   Wallet ${wallet}   Ship: ${SHIPS[selectedShip].name}`, W / 2, 186);
-    drawMenuButtons(['PLAY', 'SHOP', 'UPGRADES'], menuIndex, 250);
+    drawMenuButtons(TITLE_MENU, menuIndex, 250);
     ctx.font = `14px ${MONO}`;
     ctx.fillStyle = COLOR.primary;
     ctx.fillText('UP/DOWN choose   ENTER select', W / 2, 470);
@@ -279,16 +301,20 @@ function drawShop() {
         ctx.fillStyle = COLOR.accent;
         ctx.fillText(ship.ability, 116, y + 10);
         ctx.textAlign = 'right';
-        const status = ownedShips.includes(i)
-            ? (selectedShip === i ? 'FLYING' : 'OWNED')
-            : `${ship.price} pts`;
+        let status = `${ship.price} pts`;
+        if (ownedShips.includes(i)) {
+            const flying = selectedShip === i ? 'FLYING' : 'OWNED';
+            status = shipLevels[i] >= CRUISER_MAX_LEVEL
+                ? `${flying} Lv ${shipLevels[i]} MAX`
+                : `${flying} Lv ${shipLevels[i]}  (U: ${cruiserUpgradeCost(i)})`;
+        }
         ctx.fillStyle = COLOR.gold;
         ctx.fillText(status, W - 56, y + 4);
     });
     ctx.textAlign = 'center';
     ctx.font = `13px ${MONO}`;
     ctx.fillStyle = COLOR.primary;
-    ctx.fillText('UP/DOWN choose   ENTER buy or fly   Z back', W / 2, H - 20);
+    ctx.fillText('UP/DOWN choose   ENTER buy or fly   U upgrade   Z back', W / 2, H - 20);
 }
 
 function drawUpgrades() {
@@ -323,6 +349,44 @@ function drawUpgrades() {
     ctx.fillText('UP/DOWN choose   ENTER upgrade   Z back', W / 2, H - 20);
 }
 
+function drawAbilities() {
+    ctx.textAlign = 'center';
+    ctx.fillStyle = COLOR.primary;
+    ctx.font = `bold 32px ${MONO}`;
+    ctx.fillText('ABILITY SHOP', W / 2, 60);
+    ctx.font = `14px ${MONO}`;
+    ctx.fillStyle = COLOR.gold;
+    ctx.fillText(`Wallet ${wallet}`, W / 2, 84);
+    ABILITIES.forEach((ability, i) => {
+        const y = 130 + i * 56;
+        drawPanel(40, y - 28, W - 80, 46, i === abilityIndex);
+        ctx.textAlign = 'left';
+        const selected = i === abilityIndex;
+        ctx.fillStyle = selected ? COLOR.gold : COLOR.primary;
+        ctx.font = `bold 16px ${MONO}`;
+        ctx.fillText(selected ? `> ${ability.name} <` : ability.name, 60, y - 4);
+        ctx.font = `12px ${MONO}`;
+        ctx.fillStyle = COLOR.accent;
+        ctx.fillText(ability.info, 60, y + 12);
+        ctx.textAlign = 'right';
+        ctx.font = `14px ${MONO}`;
+        const locked = abilityLocked(i);
+        let text = `${ABILITY_PRICE} pts`;
+        ctx.fillStyle = COLOR.gold;
+        if (hasAbility(i)) {
+            text = 'OWNED';
+        } else if (locked) {
+            text = `NEEDS ${ABILITIES[ability.requires].name}`;
+            ctx.fillStyle = COLOR.danger;
+        }
+        ctx.fillText(text, W - 56, y + 4);
+    });
+    ctx.textAlign = 'center';
+    ctx.font = `13px ${MONO}`;
+    ctx.fillStyle = COLOR.primary;
+    ctx.fillText('UP/DOWN choose   ENTER buy   Z back', W / 2, H - 20);
+}
+
 function draw() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
@@ -350,14 +414,21 @@ function draw() {
         drawUpgrades();
         return;
     }
+    if (state === 'abilities') {
+        drawSceneBackground();
+        drawAbilities();
+        return;
+    }
 
     drawSceneBackground();
     drawRocks();
     drawPowerUpDrops();
+    drawHeartDrops();
     drawBoss();
     drawBossSpikes();
     drawBullets();
     drawPlayer();
+    drawHeartFlash();
     drawExplosions();
     drawHud();
 

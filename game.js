@@ -12,10 +12,16 @@ const PLAYER_H = 44;
 const PLAYER_SPEED = 5;
 const PLAYER_BULLET_SPEED = 10;
 const FIRE_COOLDOWN_FRAMES = 14;
+const FIRE_COOLDOWN_RAPID = 10; // Rapid Fire ability: 14 / 10 = 40% faster
+const FIRE_COOLDOWN_OVERDRIVE = 6; // Rapid Overdrive ability: 14 / 6 is about 2.3x faster
+const MAX_PLAYER_BULLETS = 16; // Bullets in flight at once; high fire rates need more than 4
 const RESPAWN_FRAMES = 90;
 const ASTEROID_SIZE = 40;
 const POWER_UP_SIZE = 36;
 const POWER_UP_SPAWN_FRAMES = 600; // one power-up every 10 seconds
+const HEART_SIZE = 30;
+const HEART_SPAWN_FRAMES = 900; // one heart pickup every 15 seconds
+const MAX_LIVES = 3;
 const BOSS_W = 120;
 const BOSS_H = 80;
 const BOSS_SCORE = 100;
@@ -36,7 +42,7 @@ const SHIPS = [
     { name: 'Bulwark', price: 500, ability: 'Starts each run with 5 seconds of shield' },
     { name: 'Swiftwing', price: 500, ability: 'Moves 40% faster' },
     { name: 'Lodestar', price: 500, ability: 'Pulls power-ups toward you' },
-    { name: 'Medic', price: 500, ability: 'Extra life every 300 points (max 5)' },
+    { name: 'Medic', price: 500, ability: 'Extra life every 300 points (max 3)' },
     { name: 'Piercer', price: 500, ability: 'Bullets pass through rocks' },
     { name: 'Bomber', price: 500, ability: 'Press Q: blast clears nearby rocks (20 s)' },
     { name: 'Engineer', price: 500, ability: 'Power-ups last 50% longer' },
@@ -62,12 +68,37 @@ const POWER_UP_INFO = [
     'Destroys every rock and hurts the boss'
 ];
 
-// 'loading' | 'error' | 'title' | 'playing' | 'paused' | 'over' | 'shop' | 'upgrades'
+// Abilities bought once in the ability shop and kept across runs.
+const CRUISER_MAX_LEVEL = 3;
+const CRUISER_UPGRADE_BASE = 100; // cost to go from level 1 to level 2
+const CRUISER_UPGRADE_STEP = 50; // each later level costs this much more
+const CRUISER_SPEED_PER_LEVEL = 0.1; // +10% ship speed per level above 1
+const CRUISER_FIRE_FRAMES_PER_LEVEL = 1; // one frame faster per level above 1
+const CRUISER_FIRE_FLOOR = 3; // fastest the cooldown can get, in frames
+const ABILITY_PRICE = 1000;
+// Indexes are saved in the save file, so existing entries keep their numbers.
+const ABILITY_INDEX = { RAPID: 0, TWIN: 1, IRON: 2, SALVAGE: 3, OVERDRIVE: 4, TRIPLE: 5, SURGE: 6 };
+const ABILITIES = [
+    { name: 'Rapid Fire', info: 'Fire rate up 40%', requires: null },
+    { name: 'Twin Shot', info: 'Fires two bullets at once', requires: null },
+    { name: 'Iron Shield', info: 'Starts each run with 5 seconds of shield', requires: null },
+    { name: 'Salvage', info: '+1 point for every rock destroyed', requires: null },
+    { name: 'Rapid Overdrive', info: 'Fires 2.3x faster', requires: ABILITY_INDEX.RAPID },
+    { name: 'Triple Shot', info: 'Fires three bullets at once', requires: ABILITY_INDEX.TWIN },
+    { name: 'Power Surge', info: 'Power-ups last 50% longer', requires: null }
+];
+
+// 'loading' | 'error' | 'title' | 'playing' | 'paused' | 'over' | 'shop' | 'upgrades' | 'abilities'
 let state = 'loading';
 let errorMessage = '';
+// Title menu buttons, in order. The key handler and the drawing both use this list.
+const TITLE_MENU = ['PLAY', 'SHOP', 'UPGRADES', 'ABILITIES'];
 let menuIndex = 0;
 let shopIndex = 0;
 let upgradeIndex = 0;
+let abilityIndex = 0;
+let ownedAbilities = [];
+let shipLevels = SHIPS.map(() => 1); // cruiser level for each ship, 1 to CRUISER_MAX_LEVEL
 let best = 0;
 let wallet = 0;
 let ownedShips = [0];
@@ -85,6 +116,9 @@ let playerBullets = [];
 let rocks = [];
 let bossSpikes = [];
 let powerUpDrops = [];
+let heartDrops = [];
+let heartTimer = HEART_SPAWN_FRAMES;
+let heartFlash = 0; // frames left to show the "+1 HEART" message
 let activePowerUps = {}; // type index -> frames left
 let powerUpTimer = POWER_UP_SPAWN_FRAMES;
 let rockTimer = 0;
@@ -118,6 +152,10 @@ function explode(x, y) {
     playSound('explosion', 0.4);
 }
 
+function hasAbility(index) {
+    return ownedAbilities.includes(index);
+}
+
 function shipData() {
     return SHIPS[selectedShip];
 }
@@ -129,7 +167,8 @@ function upgradeCost(level) {
 function powerUpDuration(index) {
     const base = POWER_UPS[index].seconds * 60;
     const bonus = shipData() && selectedShip === SHIP_INDEX.ENGINEER ? 1.5 : 1;
-    return Math.round(base * bonus * (1 + upgrades[index] * 0.2));
+    const surge = hasAbility(ABILITY_INDEX.SURGE) ? 1.5 : 1;
+    return Math.round(base * bonus * surge * (1 + upgrades[index] * 0.2));
 }
 
 function addPoints(points) {
@@ -152,6 +191,12 @@ function loadProgress() {
         }
         if (!ownedShips.includes(0)) ownedShips.unshift(0);
         selectedShip = ownedShips.includes(data.selectedShip) ? data.selectedShip : 0;
+        if (Array.isArray(data.shipLevels) && data.shipLevels.length === SHIPS.length) {
+            shipLevels = data.shipLevels.map(v => Math.min(CRUISER_MAX_LEVEL, Math.max(1, Number(v) || 1)));
+        }
+        if (Array.isArray(data.ownedAbilities)) {
+            ownedAbilities = data.ownedAbilities.filter(i => Number.isInteger(i) && i >= 0 && i < ABILITIES.length);
+        }
         if (Array.isArray(data.upgrades) && data.upgrades.length === POWER_UPS.length) {
             upgrades = data.upgrades.map(v => Math.min(UPGRADE_MAX_LEVEL, Math.max(0, Number(v) || 0)));
         }
@@ -163,7 +208,7 @@ function loadProgress() {
 function saveProgress() {
     try {
         localStorage.setItem(SAVE_KEY, JSON.stringify({
-            best, wallet, ownedShips, selectedShip, upgrades
+            best, wallet, ownedShips, selectedShip, upgrades, ownedAbilities, shipLevels
         }));
     } catch (err) {
         // Storage can be blocked (for example, in private browsing)
@@ -181,6 +226,9 @@ function resetRun() {
     rocks = [];
     bossSpikes = [];
     powerUpDrops = [];
+    heartDrops = [];
+    heartTimer = HEART_SPAWN_FRAMES;
+    heartFlash = 0;
     activePowerUps = {};
     powerUpTimer = POWER_UP_SPAWN_FRAMES;
     rockTimer = 0;
@@ -195,7 +243,7 @@ function resetRun() {
     frameCount = 0;
     medicMark = 0;
     runStats = { points: 0, rocksDestroyed: 0, bossKills: 0, bossWaves: 0 };
-    if (selectedShip === SHIP_INDEX.BULWARK) activePowerUps[0] = 300;
+    if (selectedShip === SHIP_INDEX.BULWARK || hasAbility(ABILITY_INDEX.IRON)) activePowerUps[0] = 300;
     state = 'playing';
     const music = ASSETS.sounds.music;
     music.loop = true;

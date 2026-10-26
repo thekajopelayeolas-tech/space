@@ -8,7 +8,8 @@ const IMAGE_FILES = {
     playerBullet: './space_rocket_3.png',
     enemyBullet: './space_rocket_5.png',
     explosion: './big_explosion/big_explosion.png',
-    heart: './lives_16.png',
+    heart: './hearts_1.png',
+    heartPickup: './lives_16.png',
     asteroid: './asteroid_big.png',
     spike: './spike_ball/spike_ball.png',
     planet: './planet_ringed.png'
